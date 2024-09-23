@@ -1,0 +1,152 @@
+// Verse Script for a Boss with Health, Roaming, Running, and Attack Animations
+
+class BossEnemy : Entity
+{
+    var MaxHealth : float
+    var CurrentHealth : float
+    var RoamingSpeed : float = 300.0
+    var AttackRadius : float = 25000.0 // 250m radius (in Unreal units, 1 unit = 1 cm)
+    var AttackDamage : float = 100.0
+    var IsRoaming : bool = true
+    var IsAttacking : bool = false
+    var PlayerPosition : vector
+    var BossPosition : vector
+    var RunAnim : animation
+    var AttackAnim : animation
+    var IdleAnim : animation
+
+    // Constructor to set up the boss's initial health and animations
+    BossEnemy(float InitialHealth, animation RunAnimation, animation AttackAnimation, animation IdleAnimation)
+    {
+        // Set boss health within the defined range
+        if InitialHealth < 5000 { InitialHealth = 5000 }
+        else if InitialHealth > 100000 { InitialHealth = 100000 }
+
+        MaxHealth = InitialHealth
+        CurrentHealth = MaxHealth
+
+        // Initialize animations
+        RunAnim = RunAnimation
+        AttackAnim = AttackAnimation
+        IdleAnim = IdleAnimation
+
+        // Start the boss in roaming mode
+        StartRoaming()
+    }
+
+    // Function to handle roaming logic and idle animation
+    func StartRoaming() : void
+    {
+        if IsRoaming
+        {
+            Self.PlayAnimation(IdleAnim) // Play idle animation during roaming
+            // Logic to make the boss roam randomly within a certain area
+            Self.MoveRandomlyInArea(2000) // Roaming area range (e.g., 2000 Unreal units)
+        }
+    }
+
+    // Function to handle running toward the player
+    func StartRunning(Player : Entity) : void
+    {
+        IsRoaming = false
+        IsAttacking = false
+
+        // Play running animation and move towards the player
+        Self.PlayAnimation(RunAnim)
+        Self.MoveTo(PlayerPosition, RoamingSpeed)
+    }
+
+    // Function to stop roaming and begin attacking
+    func StartAttacking(Player : Entity) : void
+    {
+        IsRoaming = false
+        IsAttacking = true
+
+        // Play attack animation and stop moving
+        Self.PlayAnimation(AttackAnim)
+
+        // Deal damage to the player (gameplay logic can be added here)
+        Player.TakeDamage(AttackDamage)
+    }
+
+    // Function to detect player within attack radius
+    func DetectPlayer(Player : Entity) : bool
+    {
+        PlayerPosition = Player.GetPosition()
+        BossPosition = Self.GetPosition()
+
+        // Calculate the distance to the player
+        var DistanceToPlayer : float = Distance(BossPosition, PlayerPosition)
+
+        // Check if the player is within the attack radius
+        if DistanceToPlayer <= AttackRadius
+        {
+            return true
+        }
+        return false
+    }
+
+    // Function to handle taking damage
+    func TakeDamage(DamageAmount : float) : void
+    {
+        CurrentHealth -= DamageAmount
+
+        // If the boss health reaches 0, the boss is defeated
+        if CurrentHealth <= 0
+        {
+            Self.Destroy()
+        }
+    }
+
+    // Main tick function to update the boss state
+    func Tick(Player : Entity) : void
+    {
+        // If a player is detected within attack range
+        if DetectPlayer(Player)
+        {
+            if not IsAttacking
+            {
+                StartRunning(Player) // Boss will run toward the player
+            }
+
+            // If close enough, initiate attack
+            if Distance(BossPosition, PlayerPosition) <= 500 // Close enough to attack
+            {
+                StartAttacking(Player)
+            }
+        }
+        else
+        {
+            // If no player is detected, continue roaming
+            if not IsRoaming
+            {
+                IsRoaming = true
+                StartRoaming()
+            }
+        }
+    }
+}
+
+// Function to create and initialize the boss with set health and animations
+func SpawnBoss(InitialHealth : float, RunAnimation : animation, AttackAnimation : animation, IdleAnimation : animation) : BossEnemy
+{
+    return new BossEnemy(InitialHealth, RunAnimation, AttackAnimation, IdleAnimation)
+}
+
+// Main game loop to spawn the boss and check for player interactions
+func Main() : void
+{
+    // Load or reference the necessary animations for the boss
+    var RunAnimation : animation = LoadAnimation("Run_Anim_Path") // Replace with actual animation reference
+    var AttackAnimation : animation = LoadAnimation("Attack_Anim_Path") // Replace with actual animation reference
+    var IdleAnimation : animation = LoadAnimation("Idle_Anim_Path") // Replace with actual animation reference
+
+    // Initialize the boss with a random health value between 5000 and 100000 and the assigned animations
+    var Boss : BossEnemy = SpawnBoss(80000, RunAnimation, AttackAnimation, IdleAnimation) // Example health set to 80000
+
+    while (true)
+    {
+        var Player : Entity = GetPlayer() // Get player entity reference
+        Boss.Tick(Player) // Continuously update the boss's behavior based on player proximity
+    }
+}
