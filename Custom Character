@@ -1,139 +1,61 @@
-// Verse Script for Custom Character with Attach Blueprint, Run, Idle, Trigger Device Logic
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Devices }
+using { /Verse.org/Assets }
 
-class CustomCharacter : Entity
-{
-    var Mesh : blueprint
-    var RunAnim : animation
-    var IdleAnim : animation
-    var PlayerVisible : bool = false
-    var MeshAttached : bool = false
+custom_character := class():
 
-    // Constructor to initialize custom character's mesh and animations
-    CustomCharacter(blueprint CharMesh, animation RunAnimation, animation IdleAnimation)
-    {
-        Mesh = CharMesh
-        RunAnim = RunAnimation
-        IdleAnim = IdleAnimation
-    }
+    var PlayerMesh : mesh = Assets.GetMesh("Path/To/Your/CustomMesh") # Custom mesh
+    var IdleAnimation : animation_sequence = Assets.GetAnimation("Path/To/IdleAnimation")
+    var RunAnimation : animation_sequence = Assets.GetAnimation("Path/To/RunAnimation")
+    var IsActive : logic = false  # To track whether customization is active or not
 
-    // Function to attach the mesh to the player and make the player invisible
-    func AttachMeshToPlayer(Player : Entity) : void
-    {
-        if not MeshAttached
-        {
-            // Make player model invisible
-            Player.SetVisibility(false)
+    @editable
+    StartTrigger : trigger_device = trigger_device{}
+    
+    @editable
+    StopTrigger : trigger_device = trigger_device{}
 
-            // Attach custom mesh to the player
-            Mesh.AttachTo(Player, "Root") // Attach to the player's root bone/socket
-            MeshAttached = true
+    (Player : player).InitCustomCharacter() : void =
+        if (FortCharacter := Player.GetFortCharacter[]):
+            # Attach custom mesh and hide original player model
+            FortCharacter.AttachMesh(PlayerMesh)
+            FortCharacter.SetVisibility(false)
+            
+            # Play idle animation by default
+            FortCharacter.PlayAnimation(IdleAnimation)
 
-            // Start with idle animation
-            PlayIdle()
-        }
-    }
+            # Subscribe to movement events for animations
+            FortCharacter.MovementStateChangedEvent().Subscribe(OnMovementStateChanged)
 
-    // Function to detach the mesh and make the player visible again
-    func RemoveMeshFromPlayer(Player : Entity) : void
-    {
-        if MeshAttached
-        {
-            // Detach custom mesh
-            Mesh.DetachFrom(Player)
-            MeshAttached = false
+    (FortCharacter : fort_character).RemoveCustomCharacter() : void =
+        FortCharacter.SetVisibility(true)  # Restore original player model
+        FortCharacter.DetachMesh(PlayerMesh)  # Detach the custom mesh
+        FortCharacter.StopAllAnimations()  # Stop any animations
 
-            // Make player model visible again
-            Player.SetVisibility(true)
-        }
-    }
+    OnMovementStateChanged<private>(FortCharacter : fort_character, State : movement_state) : void =
+        if State = movement_state.Running:
+            FortCharacter.PlayAnimation(RunAnimation)
+        else:
+            FortCharacter.PlayAnimation(IdleAnimation)
 
-    // Function to play the idle animation
-    func PlayIdle() : void
-    {
-        if MeshAttached
-        {
-            Mesh.PlayAnimation(IdleAnim)
-        }
-    }
+    OnBegin<override>()<suspends> : void =
+        PlaySpace := GetPlayspace()
+        StartTrigger.TriggeredEvent().Subscribe(StartCustomization)
+        StopTrigger.TriggeredEvent().Subscribe(StopCustomization)
+        for (Player : PlaySpace.GetPlayers()):
+            Player.InitCustomCharacter()
 
-    // Function to play the run animation
-    func PlayRun() : void
-    {
-        if MeshAttached
-        {
-            Mesh.PlayAnimation(RunAnim)
-        }
-    }
+    StartCustomization<private>(Agent : agent) : void =
+        if Player := player[Agent]:
+            IsActive := true
+            Player.InitCustomCharacter()
 
-    // Function to handle the activation from a trigger device
-    func ActivateFromTrigger(Player : Entity) : void
-    {
-        AttachMeshToPlayer(Player)
-    }
+    StopCustomization<private>(Agent : agent) : void =
+        if Player := player[Agent]:
+            IsActive := false
+            if FortCharacter := Player.GetFortCharacter[]:
+                FortCharacter.RemoveCustomCharacter()
 
-    // Function to handle the deactivation from a trigger device
-    func DeactivateFromTrigger(Player : Entity) : void
-    {
-        RemoveMeshFromPlayer(Player)
-    }
-
-    // Main tick function to control animations based on player movement
-    func Tick(Player : Entity) : void
-    {
-        if MeshAttached
-        {
-            // Check if the player is moving
-            if Player.IsMoving()
-            {
-                PlayRun()
-            }
-            else
-            {
-                PlayIdle()
-            }
-        }
-    }
-}
-
-// Initialize the custom character with a mesh and animations
-entity CustomCharacterMesh = new CustomCharacter(CharMeshBlueprint, RunAnimation, IdleAnimation)
-
-
-// Trigger device logic to activate/deactivate the custom character
-class TriggerDevice : Entity
-{
-    // Variables to track player and custom character state
-    var TriggerEnabled : bool = false
-
-    // Function to activate the custom character when triggered
-    func OnTriggerEnter(Player : Entity) : void
-    {
-        if not TriggerEnabled
-        {
-            CustomCharacterMesh.ActivateFromTrigger(Player)
-            TriggerEnabled = true
-        }
-    }
-
-    // Function to deactivate the custom character when leaving the trigger
-    func OnTriggerExit(Player : Entity) : void
-    {
-        if TriggerEnabled
-        {
-            CustomCharacterMesh.DeactivateFromTrigger(Player)
-            TriggerEnabled = false
-        }
-    }
-}
-
-// Main function to constantly check for player movement and trigger activation
-func Main() : void
-{
-    while (true)
-    {
-        var Player : Entity = GetPlayer() // Get player entity reference
-        CustomCharacterMesh.Tick(Player)  // Continuously check and update animation
-
-        // Add your logic here to detect trigger enter/exit (from the TriggerDevice class)
-    }
-}
+    OnPlayerAdded<private>(Agent: agent) : void =
+        if (Player := player[Agent]):
+            Player.InitCustomCharacter()
