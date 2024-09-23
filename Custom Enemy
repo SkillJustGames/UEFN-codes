@@ -1,0 +1,161 @@
+// Enemy.verse - Roaming Enemy Script with Blueprint Mesh
+
+class Enemy : Entity
+{
+    var MaxHealth : float
+    var CurrentHealth : float
+    var RoamingSpeed : float = 300.0
+    var AttackRadius : float = 5000.0 // 50m radius
+    var AttackDamage : float = 50.0
+    var IsRoaming : bool = true
+    var IsAttacking : bool = false
+    var PlayerPosition : vector
+    var EnemyPosition : vector
+    var RunAnim : animation
+    var AttackAnim : animation
+    var IdleAnim : animation
+    var HealthBarWidget : widget_component
+    var EnemyMesh : mesh_component // Mesh component for the enemy
+
+    // Constructor to initialize enemy's health, animations, health bar, and mesh
+    Enemy(float InitialHealth, animation RunAnimation, animation AttackAnimation, animation IdleAnimation, widget_component HealthBar, mesh_component Mesh)
+    {
+        // Set health limits
+        if InitialHealth < 1000 { InitialHealth = 1000 }
+        else if InitialHealth > 10000 { InitialHealth = 10000 }
+
+        MaxHealth = InitialHealth
+        CurrentHealth = MaxHealth
+
+        // Set animations and health bar widget
+        RunAnim = RunAnimation
+        AttackAnim = AttackAnimation
+        IdleAnim = IdleAnimation
+        HealthBarWidget = HealthBar
+
+        // Assign the mesh component to the enemy
+        EnemyMesh = Mesh
+        Self.AttachMesh(EnemyMesh) // Attach the mesh to the enemy entity
+
+        // Start roaming behavior
+        StartRoaming()
+        UpdateHealthBar() // Initialize the health bar
+    }
+
+    // Function to handle roaming logic
+    func StartRoaming() : void
+    {
+        if IsRoaming
+        {
+            Self.PlayAnimation(IdleAnim) // Play idle animation while roaming
+            Self.MoveRandomlyInArea(2000) // Roaming area range
+        }
+    }
+
+    // Function to run toward player
+    func StartRunning(Player : Entity) : void
+    {
+        IsRoaming = false
+        IsAttacking = false
+
+        // Play running animation and move towards player
+        Self.PlayAnimation(RunAnim)
+        Self.MoveTo(PlayerPosition, RoamingSpeed)
+    }
+
+    // Function to attack player
+    func StartAttacking(Player : Entity) : void
+    {
+        IsRoaming = false
+        IsAttacking = true
+
+        // Play attack animation and deal damage
+        Self.PlayAnimation(AttackAnim)
+        Player.TakeDamage(AttackDamage)
+    }
+
+    // Detect player within range
+    func DetectPlayer(Player : Entity) : bool
+    {
+        PlayerPosition = Player.GetPosition()
+        EnemyPosition = Self.GetPosition()
+
+        var DistanceToPlayer : float = Distance(EnemyPosition, PlayerPosition)
+        return DistanceToPlayer <= AttackRadius
+    }
+
+    // Function to take damage
+    func TakeDamage(DamageAmount : float) : void
+    {
+        CurrentHealth -= DamageAmount
+        if CurrentHealth <= 0
+        {
+            Self.Destroy() // Enemy is defeated
+        }
+        else
+        {
+            UpdateHealthBar() // Update the health bar when damaged
+        }
+    }
+
+    // Update the health bar UI
+    func UpdateHealthBar() : void
+    {
+        var HealthPercentage : float = CurrentHealth / MaxHealth
+        HealthBarWidget.SetProgressBarValue("HealthBar", HealthPercentage)
+    }
+
+    // Main tick function
+    func Tick(Player : Entity) : void
+    {
+        if DetectPlayer(Player)
+        {
+            if not IsAttacking
+            {
+                StartRunning(Player)
+            }
+
+            if Distance(EnemyPosition, PlayerPosition) <= 300 // Close enough to attack
+            {
+                StartAttacking(Player)
+            }
+        }
+        else
+        {
+            if not IsRoaming
+            {
+                IsRoaming = true
+                StartRoaming()
+            }
+        }
+    }
+}
+
+// Function to create and initialize the enemy with health, animations, health bar, and mesh
+func SpawnEnemy(InitialHealth : float, RunAnimation : animation, AttackAnimation : animation, IdleAnimation : animation, HealthBar : widget_component, Mesh : mesh_component) : Enemy
+{
+    return new Enemy(InitialHealth, RunAnimation, AttackAnimation, IdleAnimation, HealthBar, Mesh)
+}
+
+// Main function
+func Main() : void
+{
+    var RunAnimation : animation = LoadAnimation("Run_Anim_Path") // Replace with actual animation
+    var AttackAnimation : animation = LoadAnimation("Attack_Anim_Path") // Replace with actual animation
+    var IdleAnimation : animation = LoadAnimation("Idle_Anim_Path") // Replace with actual animation
+
+    // Load the Blueprint mesh (replace with actual mesh component reference)
+    var EnemyMesh : mesh_component = LoadMeshComponent("Enemy_Mesh_Path")
+
+    // Assuming HealthBar is the widget_component attached to the boss blueprint
+    var HealthBar : widget_component = LoadWidgetComponent("HealthBar_Path")
+
+    // Initialize the enemy with health, animations, health bar, and mesh
+    var Enemy : Enemy = SpawnEnemy(5000, RunAnimation, AttackAnimation, IdleAnimation, HealthBar, EnemyMesh)
+
+    while (true)
+    {
+        var Player : Entity = GetPlayer() // Get player entity
+        Enemy.Tick(Player) // Continuously update the enemy behavior and UI
+    }
+}
