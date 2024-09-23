@@ -1,152 +1,83 @@
-// Verse Script for a Boss with Health, Roaming, Running, and Attack Animations
+using { /Fortnite.com/Characters }
+using { /Fortnite.com/Devices }
+using { /Verse.org/Assets }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+using { /UnrealEngine.com/Temporary/Diagnostics }
 
-class BossEnemy : Entity
-{
-    var MaxHealth : float
-    var CurrentHealth : float
-    var RoamingSpeed : float = 300.0
-    var AttackRadius : float = 25000.0 // 250m radius (in Unreal units, 1 unit = 1 cm)
-    var AttackDamage : float = 100.0
-    var IsRoaming : bool = true
-    var IsAttacking : bool = false
-    var PlayerPosition : vector
-    var BossPosition : vector
-    var RunAnim : animation
-    var AttackAnim : animation
-    var IdleAnim : animation
+roaming_enemy_npc := class():
 
-    // Constructor to set up the boss's initial health and animations
-    BossEnemy(float InitialHealth, animation RunAnimation, animation AttackAnimation, animation IdleAnimation)
-    {
-        // Set boss health within the defined range
-        if InitialHealth < 5000 { InitialHealth = 5000 }
-        else if InitialHealth > 100000 { InitialHealth = 100000 }
+    var EnemyMesh : mesh = Assets.GetMesh("Path/To/Your/CustomMesh") # Custom mesh
+    var IdleAnimation : animation_sequence = Assets.GetAnimation("Path/To/IdleAnimation")
+    var RunAnimation : animation_sequence = Assets.GetAnimation("Path/To/RunAnimation")
+    
+    @editable
+    var AttackRadius : float = 20.0  # Default attack radius in meters
+    
+    @editable
+    var Health : int = 1000  # Health modifiable from 0 to 100000
+    
+    var IsAlive : logic = true  # To track enemy's alive status
 
-        MaxHealth = InitialHealth
-        CurrentHealth = MaxHealth
+    @editable
+    StartPoint : vector3 = vector3{ X := 0, Y := 0, Z := 0 }  # Roaming starting point
+    @editable
+    EndPoint : vector3 = vector3{ X := 100, Y := 100, Z := 0 }  # Roaming end point
 
-        // Initialize animations
-        RunAnim = RunAnimation
-        AttackAnim = AttackAnimation
-        IdleAnim = IdleAnimation
+    var IsRoaming : logic = true  # Track if enemy is roaming
 
-        // Start the boss in roaming mode
-        StartRoaming()
-    }
+    OnBegin<override>()<suspends>: void =
+        Self.InitEnemy()
+        loop:
+            if IsAlive:
+                Self.Roam()
+                Sleep(0.5)
+            else:
+                break
 
-    // Function to handle roaming logic and idle animation
-    func StartRoaming() : void
-    {
-        if IsRoaming
-        {
-            Self.PlayAnimation(IdleAnim) // Play idle animation during roaming
-            // Logic to make the boss roam randomly within a certain area
-            Self.MoveRandomlyInArea(2000) // Roaming area range (e.g., 2000 Unreal units)
-        }
-    }
+    InitEnemy() : void =
+        # Initialize enemy with mesh and animations
+        Self.AttachMesh(EnemyMesh)
+        Self.PlayAnimation(IdleAnimation)
+        
+        Print("Enemy initialized with health: {Health}", Duration := 3.0)
 
-    // Function to handle running toward the player
-    func StartRunning(Player : Entity) : void
-    {
-        IsRoaming = false
-        IsAttacking = false
+    (Enemy : roaming_enemy_npc).Roam<suspends>():void =
+        # Roam between StartPoint and EndPoint
+        if IsRoaming:
+            Self.MoveTo(StartPoint)
+            Sleep(1.0)
+            Self.MoveTo(EndPoint)
+            Sleep(1.0)
 
-        // Play running animation and move towards the player
-        Self.PlayAnimation(RunAnim)
-        Self.MoveTo(PlayerPosition, RoamingSpeed)
-    }
+    (Enemy : roaming_enemy_npc).AttackPlayer(Player : player) : void =
+        if PlayerInRange(Player):
+            Print("Enemy attacking player!", Duration := 2.0)
+            # Logic for attack can be implemented here
+            
+            # Change animation to attack or run based on situation
+            Self.PlayAnimation(RunAnimation)
 
-    // Function to stop roaming and begin attacking
-    func StartAttacking(Player : Entity) : void
-    {
-        IsRoaming = false
-        IsAttacking = true
-
-        // Play attack animation and stop moving
-        Self.PlayAnimation(AttackAnim)
-
-        // Deal damage to the player (gameplay logic can be added here)
-        Player.TakeDamage(AttackDamage)
-    }
-
-    // Function to detect player within attack radius
-    func DetectPlayer(Player : Entity) : bool
-    {
-        PlayerPosition = Player.GetPosition()
-        BossPosition = Self.GetPosition()
-
-        // Calculate the distance to the player
-        var DistanceToPlayer : float = Distance(BossPosition, PlayerPosition)
-
-        // Check if the player is within the attack radius
-        if DistanceToPlayer <= AttackRadius
-        {
-            return true
-        }
+    PlayerInRange(Player : player) : logic =
+        if (Player := Player.GetFortCharacter[]):
+            Distance := (Self.GetTransform().Translation - Player.GetTransform().Translation).Length()
+            return Distance <= AttackRadius
         return false
-    }
 
-    // Function to handle taking damage
-    func TakeDamage(DamageAmount : float) : void
-    {
-        CurrentHealth -= DamageAmount
+    (Enemy : roaming_enemy_npc).TakeDamage(Damage : int) : void =
+        set Health -= Damage
+        Print("Enemy health: {Health}", Duration := 3.0)
 
-        // If the boss health reaches 0, the boss is defeated
-        if CurrentHealth <= 0
-        {
-            Self.Destroy()
-        }
-    }
+        if Health <= 0:
+            Self.Die()
 
-    // Main tick function to update the boss state
-    func Tick(Player : Entity) : void
-    {
-        // If a player is detected within attack range
-        if DetectPlayer(Player)
-        {
-            if not IsAttacking
-            {
-                StartRunning(Player) // Boss will run toward the player
-            }
+    (Enemy : roaming_enemy_npc).Die() : void =
+        Print("Enemy has died!", Duration := 3.0)
+        IsAlive := false
+        Self.SetVisibility(false)
 
-            // If close enough, initiate attack
-            if Distance(BossPosition, PlayerPosition) <= 500 // Close enough to attack
-            {
-                StartAttacking(Player)
-            }
-        }
-        else
-        {
-            // If no player is detected, continue roaming
-            if not IsRoaming
-            {
-                IsRoaming = true
-                StartRoaming()
-            }
-        }
-    }
-}
-
-// Function to create and initialize the boss with set health and animations
-func SpawnBoss(InitialHealth : float, RunAnimation : animation, AttackAnimation : animation, IdleAnimation : animation) : BossEnemy
-{
-    return new BossEnemy(InitialHealth, RunAnimation, AttackAnimation, IdleAnimation)
-}
-
-// Main game loop to spawn the boss and check for player interactions
-func Main() : void
-{
-    // Load or reference the necessary animations for the boss
-    var RunAnimation : animation = LoadAnimation("Run_Anim_Path") // Replace with actual animation reference
-    var AttackAnimation : animation = LoadAnimation("Attack_Anim_Path") // Replace with actual animation reference
-    var IdleAnimation : animation = LoadAnimation("Idle_Anim_Path") // Replace with actual animation reference
-
-    // Initialize the boss with a random health value between 5000 and 100000 and the assigned animations
-    var Boss : BossEnemy = SpawnBoss(80000, RunAnimation, AttackAnimation, IdleAnimation) // Example health set to 80000
-
-    while (true)
-    {
-        var Player : Entity = GetPlayer() // Get player entity reference
-        Boss.Tick(Player) // Continuously update the boss's behavior based on player proximity
-    }
-}
+    (Enemy : roaming_enemy_npc).MoveTo(Destination : vector3)<suspends> : void =
+        Self.PlayAnimation(RunAnimation)  # Play run animation while moving
+        # Simulate movement logic here (can be enhanced with navigation or pathfinding systems)
+        Print("Moving to {Destination}", Duration := 2.0)
+        Sleep(2.0)  # Simulate movement duration
+        Self.PlayAnimation(IdleAnimation)  # Back to idle when reached
