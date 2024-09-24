@@ -1,0 +1,42 @@
+using { /Fortnite.com/Devices }
+using { /Fortnite.com/Characters }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+
+player_device := class(creative_device):
+
+    @editable
+    TriggerDevice : trigger_device = trigger_device{}
+    
+    @editable
+    MinDuration : int = 1
+
+    @editable
+    MaxDuration : int = 20
+
+    OnBegin<override>() : void =
+        TriggerDevice.TriggeredEvent().Subscribe(OnTriggered)
+
+    OnTriggered() : void =
+        for (Player : GetPlayspace().GetPlayers()):
+            SpawnDeviceAndHandlePlayer(Player)
+
+    SpawnDeviceAndHandlePlayer(Player : player)<suspends> : void =
+        if (FortCharacter := Player.GetFortCharacter[]):
+            # Make player invisible
+            FortCharacter.Hide()
+
+            # Spawn player reference device in front of player
+            SpawnLocation := FortCharacter.GetTransform().Translation + vector{X:= 100, Y:= 0, Z:= 0} # Adjust spawn position as needed
+            ReferenceDevice := player_reference_device{}
+            SpawnedDevice := SpawnDeviceAt(ReferenceDevice, SpawnLocation)
+
+            # Wait for random time between MinDuration and MaxDuration
+            WaitTime := RandomIntInRange(MinDuration, MaxDuration)
+            Sleep(WaitTime)
+
+            # Make player visible again
+            FortCharacter.Show()
+
+            # Destroy the reference device
+            DestroyDevice(SpawnedDevice)
