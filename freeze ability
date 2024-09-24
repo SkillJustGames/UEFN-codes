@@ -1,0 +1,49 @@
+using { /Fortnite.com/Devices }
+using { /Fortnite.com/Characters }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+
+mutator_freeze_device := class(creative_device):
+
+    @editable
+    TriggerDevice : trigger_device = trigger_device{}
+
+    @editable
+    MutatorZoneRadius : float = 300.0 # Radius of the mutator zone
+
+    OnBegin<override>() : void =
+        TriggerDevice.TriggeredEvent().Subscribe(OnTriggered)
+
+    OnTriggered() : void =
+        for (Player : GetPlayspace().GetPlayers()):
+            SpawnMutatorZoneAndFreezePlayers(Player)
+
+    SpawnMutatorZoneAndFreezePlayers(Player : player)<suspends> : void =
+        if (FortCharacter := Player.GetFortCharacter[]):
+            # Get position in front of the player to spawn mutator zone
+            SpawnLocation := FortCharacter.GetTransform().Translation + vector{X:= 300, Y:= 0, Z:= 0} # Adjust as needed
+            
+            # Create and configure mutator zone
+            MutatorZone := mutator_zone_device{}
+            set MutatorZone.ZoneRadius = MutatorZoneRadius
+            SpawnedMutatorZone := SpawnDeviceAt(MutatorZone, SpawnLocation)
+
+            # Freeze players inside the zone
+            SpawnedMutatorZone.PlayerEnteredEvent().Subscribe(FreezePlayer)
+            SpawnedMutatorZone.PlayerExitedEvent().Subscribe(UnfreezePlayer)
+
+            # Wait for 10 seconds
+            Sleep(10.0)
+
+            # Remove the mutator zone and unfreeze all players
+            DestroyDevice(SpawnedMutatorZone)
+
+    FreezePlayer(Player : player) : void =
+        if (FortCharacter := Player.GetFortCharacter[]):
+            # Disable player movement to simulate freezing
+            FortCharacter.DisableMovement()
+
+    UnfreezePlayer(Player : player) : void =
+        if (FortCharacter := Player.GetFortCharacter[]):
+            # Re-enable player movement
+            FortCharacter.EnableMovement()
