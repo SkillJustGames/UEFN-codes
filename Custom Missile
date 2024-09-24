@@ -1,0 +1,46 @@
+using { /Fortnite.com/Devices }
+using { /Fortnite.com/Characters }
+using { /Verse.org/Simulation }
+using { /UnrealEngine.com/Temporary/SpatialMath }
+
+missile_firing_device := class(creative_device):
+
+    @editable
+    FireTriggerDevice : trigger_device = trigger_device{} # Trigger device for firing
+
+    @editable
+    MissileSpeed : float = 1000.0  # Speed of the missile
+
+    OnBegin<override>() : void =
+        FireTriggerDevice.TriggeredEvent().Subscribe(OnFired)
+
+    OnFired() : void =
+        for (Player : GetPlayspace().GetPlayers()):
+            FireMissile(Player)
+
+    FireMissile(Player : player)<suspends> : void =
+        if (FortCharacter := Player.GetFortCharacter[]):
+            # Get the location and direction to fire the missile
+            PlayerTransform := FortCharacter.GetTransform()
+            FireLocation := PlayerTransform.Translation + vector{X := 100, Y := 0, Z := 50} # Adjust position in front of player
+            FireDirection := FortCharacter.GetViewRotation().ForwardVector()
+
+            # Create and configure missile
+            Missile := projectile_device{}
+            SpawnedMissile := SpawnDeviceAt(Missile, FireLocation)
+            
+            # Set missile movement direction and speed
+            SetMissileMovement(SpawnedMissile, FireDirection)
+
+    SetMissileMovement(Missile : projectile_device, Direction : vector) : void =
+        # Apply velocity to the missile
+        Missile.SetVelocity(Direction * MissileSpeed)
+
+        # Optionally add collision and destroy after impact or certain time
+        Missile.CollidedEvent().Subscribe(OnMissileCollision)
+        Sleep(10.0) # Destroy missile after 10 seconds if no collision
+        DestroyDevice(Missile)
+
+    OnMissileCollision(Missile : projectile_device) : void =
+        # Handle missile collision (e.g., apply damage, destroy the missile)
+        DestroyDevice(Missile)
