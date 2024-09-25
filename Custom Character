@@ -1,61 +1,93 @@
-using { /Fortnite.com/Characters }
 using { /Fortnite.com/Devices }
-using { /Verse.org/Assets }
+using { /Fortnite.com/Characters }
+using { /UnrealEngine.com/Temporary/Diagnostics }
+using { /Verse.org/Simulation }
 
-custom_character := class():
+custom_character_device := class():
 
-    var PlayerMesh : mesh = Assets.GetMesh("Path/To/Your/CustomMesh") # Custom mesh
-    var IdleAnimation : animation_sequence = Assets.GetAnimation("Path/To/IdleAnimation")
-    var RunAnimation : animation_sequence = Assets.GetAnimation("Path/To/RunAnimation")
-    var IsActive : logic = false  # To track whether customization is active or not
+    var CustomMesh : mesh
+    var IsActive : logic = false
+    var PlayerCharacter : fort_character
+    var CurrentAnimation : animation_sequence
+    var Health : int
 
     @editable
-    StartTrigger : trigger_device = trigger_device{}
-    
+    MaxHealth : int = 100   # Modifiable health
     @editable
-    StopTrigger : trigger_device = trigger_device{}
+    BlueprintMesh : mesh = mesh{}              # Selectable Blueprint Mesh
+    @editable
+    IdleAnimationSequence : cinematic_sequence_device = cinematic_sequence_device{}  # Selectable Idle Animation
+    @editable
+    RunAnimationSequence : cinematic_sequence_device = cinematic_sequence_device{}   # Selectable Run Animation
 
-    (Player : player).InitCustomCharacter() : void =
-        if (FortCharacter := Player.GetFortCharacter[]):
-            # Attach custom mesh and hide original player model
-            FortCharacter.AttachMesh(PlayerMesh)
-            FortCharacter.SetVisibility(false)
-            
-            # Play idle animation by default
-            FortCharacter.PlayAnimation(IdleAnimation)
+    @editable
+    TriggerStart : trigger_device = trigger_device{}    # Start Trigger
+    @editable
+    TriggerStop : trigger_device = trigger_device{}     # Stop Trigger
 
-            # Subscribe to movement events for animations
-            FortCharacter.MovementStateChangedEvent().Subscribe(OnMovementStateChanged)
-
-    (FortCharacter : fort_character).RemoveCustomCharacter() : void =
-        FortCharacter.SetVisibility(true)  # Restore original player model
-        FortCharacter.DetachMesh(PlayerMesh)  # Detach the custom mesh
-        FortCharacter.StopAllAnimations()  # Stop any animations
-
-    OnMovementStateChanged<private>(FortCharacter : fort_character, State : movement_state) : void =
-        if State = movement_state.Running:
-            FortCharacter.PlayAnimation(RunAnimation)
-        else:
-            FortCharacter.PlayAnimation(IdleAnimation)
-
-    OnBegin<override>()<suspends> : void =
+    OnBegin<override>() : void =
         PlaySpace := GetPlayspace()
-        StartTrigger.TriggeredEvent().Subscribe(StartCustomization)
-        StopTrigger.TriggeredEvent().Subscribe(StopCustomization)
-        for (Player : PlaySpace.GetPlayers()):
-            Player.InitCustomCharacter()
+        PlaySpace.PlayerAddedEvent().Subscribe(OnPlayerAdded)
+        TriggerStart.TriggerEvent().Subscribe(ActivateCustomCharacter)
+        TriggerStop.TriggerEvent().Subscribe(DeactivateCustomCharacter)
 
-    StartCustomization<private>(Agent : agent) : void =
-        if Player := player[Agent]:
+    OnPlayerAdded(PlayerAgent : agent) : void =
+        if (Player := player[PlayerAgent]):
+            if (Character := Player.GetFortCharacter[]):
+                PlayerCharacter = Character
+
+    ActivateCustomCharacter() : void =
+        if (PlayerCharacter):
             IsActive := true
-            Player.InitCustomCharacter()
+            Health := MaxHealth  # Initialize health
+            PlayerCharacter.SetVisibility(false)  # Hide the default character
+            AttachCustomMesh()
+            StartAnimationLoop()   # Start the animation loop
 
-    StopCustomization<private>(Agent : agent) : void =
-        if Player := player[Agent]:
+            Print("Custom Character Activated with Health: {Health}.")
+
+    DeactivateCustomCharacter() : void =
+        if (PlayerCharacter):
             IsActive := false
-            if FortCharacter := Player.GetFortCharacter[]:
-                FortCharacter.RemoveCustomCharacter()
+            PlayerCharacter.SetVisibility(true)  # Show the default character
+            DetachCustomMesh()
+            Print("Custom Character Deactivated.")
 
-    OnPlayerAdded<private>(Agent: agent) : void =
-        if (Player := player[Agent]):
-            Player.InitCustomCharacter()
+    AttachCustomMesh() : void =
+        CustomMesh := BlueprintMesh
+        PlayerCharacter.AttachMesh(CustomMesh)  # Attach custom mesh to player
+
+    DetachCustomMesh() : void =
+        if (CustomMesh):
+            PlayerCharacter.DetachMesh(CustomMesh)  # Detach the custom mesh
+
+    StartAnimationLoop() : void <suspends> =
+        loop:
+            if IsActive:
+                # Check if the player is running or idle
+                if (PlayerCharacter.IsMoving()):
+                    CurrentAnimation := RunAnimationSequence.GetSequence()
+                else:
+                    CurrentAnimation := IdleAnimationSequence.GetSequence()
+
+                # Play the selected animation
+                PlayerCharacter.PlayAnimation(CurrentAnimation)
+
+            Sleep(0.1)  # Adjust timing as necessary
+
+    # Function to apply damage to the custom character
+    ApplyDamage(DamageAmount : int) : void =
+        if (IsActive and Health > 0):
+            set Health -= DamageAmount
+            Print("Custom Character took {DamageAmount} damage. Health remaining: {Health}.")
+
+            if (Health <= 0):
+                DestroyCustomCharacter()
+
+    # Handle what happens when health reaches 0
+    DestroyCustomCharacter() : void =
+        Print("Custom Character destroyed.")
+        # Make player model visible again when custom character is destroyed
+        PlayerCharacter.SetVisibility(true) 
+        DetachCustomMesh()  # Remove the custom mesh
+        DeactivateCustomCharacter()
